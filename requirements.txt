@@ -12,6 +12,7 @@ tenacity
 prompt_toolkit
 pyyaml
 requests
+yfinance
 jinja2
 pydantic>=2.0
 PyJWT[crypto]

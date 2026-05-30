@@ -120,3 +120,21 @@ python -m pytest tests/ -q
 MIT — see [LICENSE](LICENSE).
 
 Built by [Nous Research](https://nousresearch.com).
+
+---
+
+## Hermes Financial Agent Hackathon Demo
+
+The repository includes a small production-oriented EGX financial-agent layer for hackathon demos. It fetches live Egyptian Exchange quotes from Yahoo Finance through `yfinance`, normalizes symbols to Yahoo's `.CA` suffix, and never silently invents market prices. If a live request fails after a successful fetch, the agent returns the last cached quote with `"stale": true` and `"source": "cache"`; if no cache exists, it returns an explicit unavailable error.
+
+Telegram-facing portfolio operations require a `user_id`. Holdings are persisted under that Telegram user ID, not a shared chat ID, so users in the same group cannot read or mutate one another's portfolios.
+
+```bash
+source .venv/bin/activate
+python financial_agent.py quote COMI
+python financial_agent.py add --user-id 123456 COMI 10
+python financial_agent.py portfolio --user-id 123456
+python -m pytest tests/test_financial_agent_smoke.py -q -n 0
+```
+
+State defaults to `~/.hermes/financial_agent/`. Set `FINANCIAL_AGENT_HOME` to override it for a deployment or demo. The quote command requires outbound network access to Yahoo Finance; cached fallback quotes are deliberately marked as stale.
