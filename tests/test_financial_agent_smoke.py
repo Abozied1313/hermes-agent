@@ -75,6 +75,16 @@ def test_portfolio_snapshot_only_values_requested_user(tmp_path):
     assert snapshot["user_id"] == "100"
     assert snapshot["total_egp"] == 85.0
     assert [position["symbol"] for position in snapshot["positions"]] == ["COMI.CA"]
+    assert snapshot["positions"][0]["allocation_pct"] == 100.0
+    assert snapshot["insights"] == {
+        "position_count": 1,
+        "priced_position_count": 1,
+        "unavailable_position_count": 0,
+        "stale_position_count": 0,
+        "quote_coverage_pct": 100.0,
+        "largest_position": {"symbol": "COMI.CA", "allocation_pct": 100.0},
+        "risk_flags": ["Concentration risk: COMI.CA is 100.00% of priced holdings"],
+    }
 
 
 def test_daily_report_generation_uses_offline_quote_fetcher(tmp_path):
@@ -99,7 +109,73 @@ def test_daily_report_generation_uses_offline_quote_fetcher(tmp_path):
                 "stale": False,
                 "shares": 2.0,
                 "value_egp": 85.0,
+                "allocation_pct": 100.0,
             }
         ],
         "total_egp": 85.0,
+        "insights": {
+            "position_count": 1,
+            "priced_position_count": 1,
+            "unavailable_position_count": 0,
+            "stale_position_count": 0,
+            "quote_coverage_pct": 100.0,
+            "largest_position": {"symbol": "COMI.CA", "allocation_pct": 100.0},
+            "risk_flags": ["Concentration risk: COMI.CA is 100.00% of priced holdings"],
+        },
+    }
+
+
+def test_portfolio_insights_surface_stale_and_unavailable_quotes(tmp_path):
+    store = TelegramPortfolioStore(tmp_path / "portfolios.json")
+    store.add_holding("100", "COMI", 2)
+    store.add_holding("100", "SWDY", 3)
+    store.add_holding("100", "ORAS", 4)
+    cache_path = tmp_path / "quotes.json"
+    EGXQuoteService(cache_path=cache_path, fetcher=_live_quote).get_quote("SWDY")
+
+    def fetch_quote(symbol: str) -> Quote:
+        if symbol == "COMI.CA":
+            return _live_quote(symbol)
+        raise RuntimeError("offline")
+
+    agent = HermesFinancialAgent(
+        quotes=EGXQuoteService(cache_path=cache_path, fetcher=fetch_quote),
+        portfolios=store,
+    )
+
+    snapshot = agent.portfolio_snapshot("100")
+    assert snapshot["total_egp"] == 212.5
+    assert snapshot["positions"][0]["allocation_pct"] == 40.0
+    assert snapshot["positions"][2]["allocation_pct"] == 60.0
+    assert "allocation_pct" not in snapshot["positions"][1]
+    assert snapshot["insights"] == {
+        "position_count": 3,
+        "priced_position_count": 2,
+        "unavailable_position_count": 1,
+        "stale_position_count": 1,
+        "quote_coverage_pct": 66.67,
+        "largest_position": {"symbol": "SWDY.CA", "allocation_pct": 60.0},
+        "risk_flags": [
+            "Concentration risk: SWDY.CA is 60.00% of priced holdings",
+            "Market data risk: 1 position(s) use stale cached quotes",
+            "Valuation gap: 1 position(s) have no available quote",
+        ],
+    }
+
+
+def test_empty_portfolio_insights_report_full_quote_coverage(tmp_path):
+    agent = HermesFinancialAgent(
+        quotes=EGXQuoteService(cache_path=tmp_path / "quotes.json", fetcher=_live_quote),
+        portfolios=TelegramPortfolioStore(tmp_path / "portfolios.json"),
+    )
+
+    snapshot = agent.portfolio_snapshot("100")
+    assert snapshot["insights"] == {
+        "position_count": 0,
+        "priced_position_count": 0,
+        "unavailable_position_count": 0,
+        "stale_position_count": 0,
+        "quote_coverage_pct": 100.0,
+        "largest_position": None,
+        "risk_flags": [],
     }
