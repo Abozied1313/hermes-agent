@@ -1,5 +1,6 @@
 """Shared fixtures for the hermes-agent test suite."""
 
+import asyncio
 import os
 import sys
 import tempfile
@@ -12,6 +13,17 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+
+@pytest.fixture(autouse=True)
+def _provide_current_event_loop():
+    """Provide a current loop for legacy synchronous asyncio gateway tests."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    yield
+    if not loop.is_closed():
+        loop.close()
+    asyncio.set_event_loop(None)
 
 
 @pytest.fixture(autouse=True)
