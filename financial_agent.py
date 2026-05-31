@@ -14,6 +14,7 @@ import math
 import os
 import re
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -205,6 +206,14 @@ class HermesFinancialAgent:
             positions.append({**asdict(quote), "shares": shares, "value_egp": value})
         return {"user_id": str(user_id), "positions": positions, "total_egp": total_egp}
 
+    def generate_daily_report(self, user_id: str, report_date: Optional[str] = None) -> dict:
+        """Generate a dated report for one Telegram user's isolated portfolio."""
+        snapshot = self.portfolio_snapshot(user_id)
+        return {
+            "report_date": report_date or datetime.now(timezone.utc).date().isoformat(),
+            **snapshot,
+        }
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Hermes EGX financial-agent demo")
@@ -217,6 +226,8 @@ def _build_parser() -> argparse.ArgumentParser:
     add.add_argument("shares", type=float, help="Positive number of shares")
     portfolio = commands.add_parser("portfolio", help="Value one Telegram user's portfolio")
     portfolio.add_argument("--user-id", required=True, help="Telegram user ID")
+    report = commands.add_parser("daily-report", help="Generate one Telegram user's daily report")
+    report.add_argument("--user-id", required=True, help="Telegram user ID")
     return parser
 
 
@@ -228,8 +239,10 @@ def main() -> int:
             result = asdict(agent.quotes.get_quote(args.symbol))
         elif args.command == "add":
             result = {"user_id": args.user_id, "holdings": agent.portfolios.add_holding(args.user_id, args.symbol, args.shares)}
-        else:
+        elif args.command == "portfolio":
             result = agent.portfolio_snapshot(args.user_id)
+        else:
+            result = agent.generate_daily_report(args.user_id)
     except (PortfolioError, QuoteUnavailableError, ValueError) as exc:
         print(json.dumps({"error": str(exc)}, indent=2))
         return 1

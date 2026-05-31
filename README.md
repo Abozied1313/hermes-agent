@@ -134,6 +134,7 @@ source .venv/bin/activate
 python financial_agent.py quote COMI
 python financial_agent.py add --user-id 123456 COMI 10
 python financial_agent.py portfolio --user-id 123456
+python financial_agent.py daily-report --user-id 123456
 python -m pytest tests/test_financial_agent_smoke.py -q -n 0
 ```
 

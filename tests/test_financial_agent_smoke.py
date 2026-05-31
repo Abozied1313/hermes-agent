@@ -75,3 +75,31 @@ def test_portfolio_snapshot_only_values_requested_user(tmp_path):
     assert snapshot["user_id"] == "100"
     assert snapshot["total_egp"] == 85.0
     assert [position["symbol"] for position in snapshot["positions"]] == ["COMI.CA"]
+
+
+def test_daily_report_generation_uses_offline_quote_fetcher(tmp_path):
+    store = TelegramPortfolioStore(tmp_path / "portfolios.json")
+    store.add_holding("telegram-user-1", "COMI", 2)
+    agent = HermesFinancialAgent(
+        quotes=EGXQuoteService(cache_path=tmp_path / "quotes.json", fetcher=_live_quote),
+        portfolios=store,
+    )
+
+    report = agent.generate_daily_report("telegram-user-1", report_date="2026-05-31")
+    assert report == {
+        "report_date": "2026-05-31",
+        "user_id": "telegram-user-1",
+        "positions": [
+            {
+                "symbol": "COMI.CA",
+                "price": 42.5,
+                "currency": "EGP",
+                "observed_at": "2026-05-30T00:00:00+00:00",
+                "source": "yfinance",
+                "stale": False,
+                "shares": 2.0,
+                "value_egp": 85.0,
+            }
+        ],
+        "total_egp": 85.0,
+    }
