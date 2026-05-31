@@ -129,6 +129,8 @@ The repository includes a small production-oriented EGX financial-agent layer fo
 
 Telegram-facing portfolio operations require a `user_id`. Holdings are persisted under that Telegram user ID, not a shared chat ID, so users in the same group cannot read or mutate one another's portfolios.
 
+Portfolio snapshots and daily reports include lightweight, explainable risk insights: per-position allocation percentages, quote coverage, stale or unavailable quote counts, the largest priced holding, and concentration warnings. These signals are calculated locally from real or explicitly stale cached quotes, with no paid API or invented valuations.
+
 ```bash
 source .venv/bin/activate
 python financial_agent.py quote COMI

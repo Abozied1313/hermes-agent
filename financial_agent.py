@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 _EGX_SUFFIX = ".CA"
 _SYMBOL_RE = re.compile(r"^[A-Z0-9-]{1,20}$")
+_CONCENTRATION_WARNING_PCT = 50.0
 
 
 class QuoteUnavailableError(RuntimeError):
@@ -192,7 +193,7 @@ class HermesFinancialAgent:
         self.portfolios = portfolios or TelegramPortfolioStore()
 
     def portfolio_snapshot(self, user_id: str) -> dict:
-        """Value one user's portfolio without exposing any other user's state."""
+        """Value one user's portfolio and summarize its explainable risk signals."""
         positions = []
         total_egp = 0.0
         for symbol, shares in sorted(self.portfolios.get_portfolio(user_id).items()):
@@ -204,7 +205,49 @@ class HermesFinancialAgent:
             value = shares * quote.price
             total_egp += value
             positions.append({**asdict(quote), "shares": shares, "value_egp": value})
-        return {"user_id": str(user_id), "positions": positions, "total_egp": total_egp}
+
+        priced_positions = [position for position in positions if "value_egp" in position]
+        for position in priced_positions:
+            position["allocation_pct"] = round(position["value_egp"] / total_egp * 100, 2) if total_egp else 0.0
+
+        return {
+            "user_id": str(user_id),
+            "positions": positions,
+            "total_egp": total_egp,
+            "insights": self._build_portfolio_insights(positions, priced_positions),
+        }
+
+    @staticmethod
+    def _build_portfolio_insights(positions: list[dict], priced_positions: list[dict]) -> dict:
+        """Return deterministic risk signals without inventing unavailable valuations."""
+        position_count = len(positions)
+        stale_position_count = sum(bool(position.get("stale")) for position in priced_positions)
+        unavailable_position_count = position_count - len(priced_positions)
+        largest = max(priced_positions, key=lambda position: position["value_egp"], default=None)
+        largest_position = None
+        risk_flags = []
+        if largest:
+            largest_position = {
+                "symbol": largest["symbol"],
+                "allocation_pct": largest["allocation_pct"],
+            }
+            if largest["allocation_pct"] >= _CONCENTRATION_WARNING_PCT:
+                risk_flags.append(
+                    f"Concentration risk: {largest['symbol']} is {largest['allocation_pct']:.2f}% of priced holdings"
+                )
+        if stale_position_count:
+            risk_flags.append(f"Market data risk: {stale_position_count} position(s) use stale cached quotes")
+        if unavailable_position_count:
+            risk_flags.append(f"Valuation gap: {unavailable_position_count} position(s) have no available quote")
+        return {
+            "position_count": position_count,
+            "priced_position_count": len(priced_positions),
+            "unavailable_position_count": unavailable_position_count,
+            "stale_position_count": stale_position_count,
+            "quote_coverage_pct": round(len(priced_positions) / position_count * 100, 2) if position_count else 100.0,
+            "largest_position": largest_position,
+            "risk_flags": risk_flags,
+        }
 
     def generate_daily_report(self, user_id: str, report_date: Optional[str] = None) -> dict:
         """Generate a dated report for one Telegram user's isolated portfolio."""
